@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Wireguard Config QR Generator</title>
+  <style>
+    /* Changed code: Dark theme styles */
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding-top: 50px;
+      background-color: #121212;
+      color: #e0e0e0;
+    }
+    input {
+      width: 60%;
+      padding: 8px;
+      font-size: 16px;
+      margin: 5px 0;
+      background-color: #2c2c2c;
+      color: #e0e0e0;
+      border: 1px solid #444;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin-top: 15px;
+      cursor: pointer;
+      background-color: #333;
+      color: #e0e0e0;
+      border: 1px solid #555;
+    }
+    textarea {
+      background-color: #2c2c2c;
+      color: #e0e0e0;
+      border: 1px solid #444;
+    }
+    /* New: Ensure QR code container uses light mode */
+    #qr-code {
+      background-color: #fff;
+      padding: 10px;
+    }
+    #qr-continer {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 10px;
+    }
+  </style>
+  <!-- Include TweetNaCl.js library from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl.min.js"></script>
+</head>
+<body>
+  <h1>Wireguard Config QR Generator</h1>
+  <!-- Replace textarea with Wireguard config input form -->
+  <div id="wireguard-inputs">
+    <h2>Interface</h2>
+    <label>
+      Address:
+      <input id="address" type="text" value="10.10.100.10/32" />
+    </label>
+    <h2>Peer</h2>
+    <label>
+      AllowedIPs:
+      <input id="allowed-ips" type="text" value="192.168.1.0/24" />
+    </label>
+    <br>
+    <label>
+      Endpoint:
+      <input id="endpoint" type="text" value="yourDnsAddress.com:51820" />
+    </label>
+    <!-- New input for remote server public key -->
+    <br>
+    <label>
+      Server PublicKey:
+      <input id="peer-public-key" type="text" placeholder="Enter server's public key" />
+    </label>
+  </div>
+  <br>
+  <button onclick="generateWireguardConfig()">Generate Wireguard Config QR</button>
+  <div id="qr-continer"><div id="qr-code"></div></div>
+  <!-- Replace plain text with highlighted readonly input and a copy button -->
+  <!-- Updated: Client public key field with light background and dark text -->
+  <div style="margin-top:20px; display:flex; justify-content:center; align-items:center;">
+    <input id="client-public-key" readonly 
+           style="width:60%; padding:8px; font-size:16px; border:2px solid #4CAF50;" />
+    <button onclick="copyPublicKey()" style="margin-left:10px; padding:8px;">Copy</button>
+  </div>
+  <!-- New: Uneditable text area to display the generated config text masked like a password -->
+  <div style="margin-top:20px; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+    <textarea id="config-text" readonly style="width:60%; height:150px; padding:8px; font-size:16px; -webkit-text-security: disc;"></textarea>
+    <button id="toggle-config" onclick="toggleConfigVisibility()" style="margin-top:10px; padding:8px;">Show Config</button>
+  </div>
+
+  <!-- Include QRCode.js library from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    // Remove or keep this function if not needed elsewhere
+    function generateRandomKey() {
+      var array = new Uint8Array(32);
+      window.crypto.getRandomValues(array);
+      var binary = '';
+      for (var i = 0; i < array.byteLength; i++) {
+        binary += String.fromCharCode(array[i]);
+      }
+      return btoa(binary);
+    }
+    
+    // New function to generate a Wireguard key pair using TweetNaCl (Curve25519)
+    function generateWireguardKeyPair() {
+      var keyPair = nacl.box.keyPair();
+      var privateKey = btoa(String.fromCharCode(...keyPair.secretKey));
+      var publicKey = btoa(String.fromCharCode(...keyPair.publicKey));
+      return { privateKey, publicKey };
+    }
+
+    function generateWireguardConfig() {
+      var qrContainer = document.getElementById("qr-code");
+      // Clear previous QR code if any
+      qrContainer.innerHTML = "";
+
+      // Generate client's key pair
+      var keys = generateWireguardKeyPair();
+      var privateKey = keys.privateKey;
+      var clientPublicKey = keys.publicKey;
+
+      // Get form field values
+      var address = document.getElementById("address").value;
+      var allowedIPs = document.getElementById("allowed-ips").value;
+      var endpoint = document.getElementById("endpoint").value;
+      var peerPublicKey = document.getElementById("peer-public-key").value;
+
+      // Create the Wireguard configuration string
+      var config = "[Interface]\n";
+      config += "PrivateKey = " + privateKey + "\n";
+      config += "Address = " + address + "\n\n";
+      config += "[Peer]\n";
+      config += "PublicKey = " + peerPublicKey + "\n";
+      config += "AllowedIPs = " + allowedIPs + "\n";
+      config += "Endpoint = " + endpoint;
+
+      // Create new QR code using the generated config
+      new QRCode(qrContainer, {
+        text: config,
+        width: 256,
+        height: 256
+      });
+      
+      // Display the generated client's public key
+      document.getElementById("client-public-key").value = clientPublicKey;
+      // Display the configuration text in the readonly textarea
+      document.getElementById("config-text").value = config;
+    }
+    
+    // New function to copy the client's public key to clipboard
+    function copyPublicKey() {
+      var keyField = document.getElementById("client-public-key");
+      keyField.select();
+      keyField.setSelectionRange(0, 99999); // mobile devices
+      navigator.clipboard.writeText(keyField.value);
+      // Optionally: indicate the key was copied (e.g., with an alert)
+      alert("Client public key copied!");
+    }
+    
+    // New: function to toggle the visibility of the configuration text
+    function toggleConfigVisibility() {
+      var configText = document.getElementById("config-text");
+      var toggleButton = document.getElementById("toggle-config");
+      var current = configText.style.webkitTextSecurity;
+      if (current === "disc") {
+        configText.style.webkitTextSecurity = "none";
+        toggleButton.textContent = "Hide Config";
+      } else {
+        configText.style.webkitTextSecurity = "disc";
+        toggleButton.textContent = "Show Config";
+      }
+    }
+  </script>
+</body>
+</html>
